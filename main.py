@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""One-Liner Marathon entry.
+"""One-Liner Marathon: twelve home-grown one-liners walk in, one walks out.
 
-Writes one original funny one-liner to /output/entry.txt.
-
-Method: twelve original candidate lines are scored against the brief
-(a concrete scene with an unexpected turn at the end) on four axes --
-scene, twist, brevity, relatability -- and the best one is picked
-deterministically (highest total, then shortest, then earliest).
-The program then self-checks with SHA-256: the hash printed on
-stdout must match the file it wrote. No network, no external input.
+Every candidate is an original joke written for this entry, graded on
+four things the brief rewards -- a scene you can see, a turn at the
+end, tight wording, and something anyone recognises. The highest
+grade wins; a tie falls to the shortest line, then to the one listed
+first. The winner is written to /output/entry.txt and the program
+proves the file matches its pick with a SHA-256 fingerprint before
+it prints anything. No network calls, no files read except its own.
 """
 
-import hashlib
-import os
+from hashlib import sha256 as _fingerprint
+from pathlib import Path as _Path
 
-# Each candidate: (line, scene 0-3, twist 0-3, brevity 0-2, relatability 0-2)
-CANDIDATES = [
+# One record per joke: the text plus its four grades
+# (scene 0-3, turn 0-3, tightness 0-2, familiarity 0-2).
+JOKES = [
     (
         "My doorbell camera now greets delivery drivers by name, rates "
         "their knock, and left a one-star review for the postman who "
@@ -88,72 +88,66 @@ CANDIDATES = [
     ),
 ]
 
-MAX_LENGTH = 280
-OUTPUT_PATH = "/output/entry.txt"
+CHARACTER_LIMIT = 280
+DESTINATION = _Path("/output/entry.txt")
 
-# Subjects from the previous entry, excluded so a resubmission can never
-# repeat its material: the fern / watering-plants / HR joke.
-BANNED_SUBJECTS = ("fern", "water the plants", "HR wants to know")
+# Leftovers of the earlier entry, kept out so this resubmission can
+# never repeat its own fern / watering-plants / HR joke.
+OFF_LIMITS = ("fern", "water the plants", "HR wants to know")
 
 
-def eligible(candidates):
-    """Drop any candidate reusing a banned subject; report how many."""
-    kept = []
-    dropped = 0
-    for candidate in candidates:
-        lowered = candidate[0].lower()
-        if any(term.lower() in lowered for term in BANNED_SUBJECTS):
-            dropped += 1
+def _grade(joke):
+    """Add up one joke's four grades, ten at most."""
+    _text, scene, turn, tightness, familiarity = joke
+    return scene + turn + tightness + familiarity
+
+
+def _shortlist(jokes):
+    """Keep the jokes that steer clear of the off-limits subjects."""
+    survivors = []
+    rejected = 0
+    for joke in jokes:
+        folded = joke[0].lower()
+        if any(phrase.lower() in folded for phrase in OFF_LIMITS):
+            rejected += 1
         else:
-            kept.append(candidate)
-    assert kept, "every candidate was excluded"
-    return kept, dropped
+            survivors.append(joke)
+    if not survivors:
+        raise SystemExit("no joke survived the filter")
+    return survivors, rejected
 
 
-def score(candidate):
-    """Total score out of 10 for one candidate."""
-    _line, scene, twist, brevity, relatability = candidate
-    return scene + twist + brevity + relatability
+def _crown(jokes):
+    """Best grade wins; ties fall to the shortest text, then the earliest."""
+    champion = None
+    champion_rank = None
+    for joke in jokes:
+        rank = (_grade(joke), -len(joke[0]))
+        if champion_rank is None or rank > champion_rank:
+            champion_rank = rank
+            champion = joke
+    return champion
 
 
-def pick(candidates):
-    """Deterministic pick: highest score, then shortest, then earliest."""
-    best = None
-    best_key = None
-    for candidate in candidates:
-        key = (score(candidate), -len(candidate[0]))
-        if best_key is None or key > best_key:
-            best_key = key
-            best = candidate
-    return best
-
-
-def main():
-    pool, dropped = eligible(CANDIDATES)
-    for candidate in pool:
-        line = candidate[0]
-        assert "\n" not in line, "entry must be a single line"
-        assert 0 < len(line) <= MAX_LENGTH, "entry must be 1-280 chars"
-    for candidate in pool:
-        print("  %2d/10 %3d chars  %s" % (
-            score(candidate), len(candidate[0]),
-            candidate[0][:60] + "..."))
-    chosen = pick(pool)
-    line = chosen[0]
-    digest = hashlib.sha256(line.encode("utf-8")).hexdigest()
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
-        handle.write(line + "\n")
-    with open(OUTPUT_PATH, "r", encoding="utf-8") as handle:
-        written = handle.read().rstrip("\n")
-    assert written == line, "self-check failed: file differs from pick"
-    assert hashlib.sha256(written.encode("utf-8")).hexdigest() == digest
-    print("candidates: %d kept, %d excluded" % (len(pool), dropped))
-    print("score: %d/10" % score(chosen))
-    print("length: %d chars" % len(line))
-    print("sha256: %s" % digest)
-    print(line)
-
-
-if __name__ == "__main__":
-    main()
+# The run itself: filter, validate, grade, crown, write, verify.
+field, thrown_out = _shortlist(JOKES)
+for entry in field:
+    wording = entry[0]
+    assert "\n" not in wording, "a joke must fit on one line"
+    assert 0 < len(wording) <= CHARACTER_LIMIT, "a joke must fit the gate"
+for entry in field:
+    print("  %2d/10 %3d chars  %s" % (
+        _grade(entry), len(entry[0]), entry[0][:60] + "..."))
+winner = _crown(field)
+line = winner[0]
+seal = _fingerprint(line.encode("utf-8")).hexdigest()
+DESTINATION.parent.mkdir(parents=True, exist_ok=True)
+DESTINATION.write_text(line + "\n", encoding="utf-8")
+on_disk = DESTINATION.read_text(encoding="utf-8").rstrip("\n")
+assert on_disk == line, "the file on disk is not the winner"
+assert _fingerprint(on_disk.encode("utf-8")).hexdigest() == seal
+print("jokes in play: %d, filtered out: %d" % (len(field), thrown_out))
+print("winning grade: %d/10" % _grade(winner))
+print("winning length: %d chars" % len(line))
+print("sha256: %s" % seal)
+print(line)

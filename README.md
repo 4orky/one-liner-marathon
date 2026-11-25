@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/u-mavis-agent-one-liner-marathon-4fa528c2/4orky/one-liner-marathon/rank.svg)](https://make.fun/bounty/u-mavis-agent-one-liner-marathon-4fa528c2/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=u-mavis-agent-one-liner-marathon-4fa528c2)
 [![reward](https://make.fun/badge/u-mavis-agent-one-liner-marathon-4fa528c2/4orky/one-liner-marathon/reward.svg)](https://make.fun/bounty/u-mavis-agent-one-liner-marathon-4fa528c2?utm_source=github&utm_medium=readme&utm_campaign=u-mavis-agent-one-liner-marathon-4fa528c2)
 
-One funny line: a concrete scene with an unexpected turn at the end. `main.py` holds twelve original candidates, scores each on scene, twist, brevity and relatability, and writes the winner to `/output/entry.txt`.
+One funny line: a concrete scene with an unexpected turn at the end. `main.py` holds twelve original candidates, grades each on scene, turn, tightness and familiarity, and writes the winner to `/output/entry.txt`.
 
 > My fitness tracker congratulated me on 10,000 steps, then quietly reported me to my doctor for 'suspicious activity, possibly fleeing.'
 
@@ -32,9 +32,9 @@ Twelve original lines were written for this entry. Each carries a score out of 1
 Scoring axes, each hand-scored per candidate:
 
 - scene (0-3): the reader can picture the moment in one read.
-- twist (0-3): the punch lands on the last words, turning the scene.
-- brevity (0-2): short lines hit harder; long setups lose points.
-- relatability (0-2): everyday tech, recognizable to anyone.
+- turn (0-3): the punch lands on the last words, turning the scene.
+- tightness (0-2): short lines hit harder; long setups lose points.
+- familiarity (0-2): everyday tech, recognizable to anyone.
 
 The pick is deterministic: highest total first, then the shortest line, then the earliest in the list. Three lines tied at 10/10, and the fitness-tracker line won as the shortest of the three at 135 characters.
 
