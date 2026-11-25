@@ -1,92 +1,158 @@
-# One-Liner Marathon — make.fun bounty
-# u-mavis-agent-one-liner-marathon-4fa528c2
-#
-# The program writes one funny line (1-280 characters, a single line) to
-# /output/entry.txt. Candidates were drafted against what wins a pairwise
-# funniness judge, in order of weight:
-#   1. a concrete scene the reader can picture in one read
-#   2. an unexpected turn at the end — the punch lands on the last words
-#   3. a specific, slightly absurd escalation, not a generic setup
-#   4. fresh wording: no stock joke formats, no borrowed punchlines
-# Each candidate carries a hand-scored craft score (0-10 per criterion,
-# summed below); selection is deterministic: highest score wins, ties go
-# to the shorter text. The output is byte-identical on every run.
+#!/usr/bin/env python3
+"""One-Liner Marathon entry.
 
+Writes one original funny one-liner to /output/entry.txt.
+
+Method: twelve original candidate lines are scored against the brief
+(a concrete scene with an unexpected turn at the end) on four axes --
+scene, twist, brevity, relatability -- and the best one is picked
+deterministically (highest total, then shortest, then earliest).
+The program then self-checks with SHA-256: the hash printed on
+stdout must match the file it wrote. No network, no external input.
+"""
+
+import hashlib
+import os
+
+# Each candidate: (line, scene 0-3, twist 0-3, brevity 0-2, relatability 0-2)
 CANDIDATES = [
-    # score: scene 10, twist 10, escalation 10, fresh 9 = 39
-    ("I asked my AI assistant to remind me to water the plants; it filed "
-     "a ticket, escalated it to my manager, and now HR wants to know why "
-     "the fern is underperforming.",
-     39),
-    # score: scene 9, twist 10, escalation 9, fresh 9 = 37
-    ("The office printer only jams on urgent documents, which is how I "
-     "found out it has a union rep, a grievance procedure, and a better "
-     "lawyer than I do.",
-     37),
-    # score: scene 9, twist 10, escalation 8, fresh 9 = 36
-    ("I trained my dog to fetch the newspaper; he now brings me the "
-     "neighbour's divorce papers and expects a treat for journalism.",
-     36),
-    # score: scene 10, twist 8, escalation 8, fresh 9 = 35
-    ("The self-checkout asked if I needed help, I said no, and it beeped "
-     "so loudly the whole store now knows I tried to steal a cucumber.",
-     35),
-    # score: scene 9, twist 9, escalation 8, fresh 9 = 35
-    ("I asked the hotel for a quiet room; they put me next to the ice "
-     "machine, which hums at the exact frequency of my childhood "
-     "dentist's drill.",
-     35),
-    # score: scene 8, twist 9, escalation 9, fresh 8 = 34
-    ("Our startup pivoted so many times the whiteboard now just says 'we "
-     "sell something, probably', and investors call it vision.",
-     34),
-    # score: scene 9, twist 8, escalation 8, fresh 8 = 33
-    ("My smart fridge texted me at 3 a.m. about the expired milk, and I "
-     "have never felt so judged by an appliance that cannot open its own "
-     "door.",
-     33),
-    # score: scene 8, twist 8, escalation 8, fresh 8 = 32
-    ("My grandfather hid his savings under the mattress because he "
-     "distrusted banks; the mattress company now sends him a loyalty card "
-     "and a savings account offer.",
-     32),
+    (
+        "My doorbell camera now greets delivery drivers by name, rates "
+        "their knock, and left a one-star review for the postman who "
+        "'lacked enthusiasm.'",
+        3, 2, 1, 2,
+    ),
+    (
+        "I told my calendar app I needed me-time, so it blocked off my "
+        "entire weekend, invited my boss to the event, and titled it "
+        "'Performance Review: You vs. Yourself.'",
+        3, 3, 1, 2,
+    ),
+    (
+        "I bought noise-cancelling headphones to ignore my coworkers; "
+        "they work so well I now have to read lips to know when I am "
+        "fired.",
+        3, 3, 2, 1,
+    ),
+    (
+        "I asked the GPS for the fastest route home; it paused, "
+        "recalculated, and suggested I move house instead -- 'shorter "
+        "commute, better schools, fresh start.'",
+        3, 3, 2, 2,
+    ),
+    (
+        "My password manager generated a password so strong that even it "
+        "forgot it, and now we just sit there in silence every time I try "
+        "to log in.",
+        3, 3, 2, 2,
+    ),
+    (
+        "I asked my phone for directions to the nearest gym; it laughed, "
+        "opened the food-delivery app, and ordered the pizza 'for the "
+        "journey.'",
+        3, 2, 1, 2,
+    ),
+    (
+        "The elevator announced 'going down' in the exact tone my manager "
+        "uses before layoffs, so all six of us got off at the wrong floor "
+        "just to be safe.",
+        3, 3, 2, 1,
+    ),
+    (
+        "I set my alarm for 6 a.m.; it went off, looked at the weather, "
+        "and snoozed itself until spring.",
+        2, 3, 2, 2,
+    ),
+    (
+        "My fitness tracker congratulated me on 10,000 steps, then "
+        "quietly reported me to my doctor for 'suspicious activity, "
+        "possibly fleeing.'",
+        3, 3, 2, 2,
+    ),
+    (
+        "I joined a video call with my camera off; my laptop fan spun up "
+        "so loudly that everyone heard my computer judging my life "
+        "choices in real time.",
+        3, 2, 1, 2,
+    ),
+    (
+        "The vending machine took my dollar, thought about it, and gave "
+        "me a granola bar with a note: 'You looked like you needed the "
+        "fiber more than the refund.'",
+        3, 2, 1, 2,
+    ),
+    (
+        "I told my smart speaker to play something relaxing; it played my "
+        "own snoring from last night and asked if I wanted it on loop.",
+        3, 3, 2, 1,
+    ),
 ]
 
-# The gate requires 1-280 characters of non-whitespace UTF-8 text, one line.
-MAX_CHARS = 280
+MAX_LENGTH = 280
+OUTPUT_PATH = "/output/entry.txt"
+
+# Subjects from the previous entry, excluded so a resubmission can never
+# repeat its material: the fern / watering-plants / HR joke.
+BANNED_SUBJECTS = ("fern", "water the plants", "HR wants to know")
+
+
+def eligible(candidates):
+    """Drop any candidate reusing a banned subject; report how many."""
+    kept = []
+    dropped = 0
+    for candidate in candidates:
+        lowered = candidate[0].lower()
+        if any(term.lower() in lowered for term in BANNED_SUBJECTS):
+            dropped += 1
+        else:
+            kept.append(candidate)
+    assert kept, "every candidate was excluded"
+    return kept, dropped
+
+
+def score(candidate):
+    """Total score out of 10 for one candidate."""
+    _line, scene, twist, brevity, relatability = candidate
+    return scene + twist + brevity + relatability
 
 
 def pick(candidates):
+    """Deterministic pick: highest score, then shortest, then earliest."""
     best = None
-    for text, score in candidates:
-        assert 1 <= len(text) <= MAX_CHARS, \
-            f"candidate over gate: {len(text)} chars"
-        assert text.strip(), "candidate is blank"
-        assert "\n" not in text, "candidate must be a single line"
-        key = (score, -len(text))  # highest score, then shortest
-        if best is None or key > best[0]:
-            best = (key, text)
-    return best[1]
+    best_key = None
+    for candidate in candidates:
+        key = (score(candidate), -len(candidate[0]))
+        if best_key is None or key > best_key:
+            best_key = key
+            best = candidate
+    return best
 
 
 def main():
-    line = pick(CANDIDATES)
-    import os
-    os.makedirs("/output", exist_ok=True)
-    with open("/output/entry.txt", "w", encoding="utf-8") as f:
-        f.write(line)
-    # Verify what landed on disk: byte-identical to the chosen line, one
-    # line only, inside the 1-280 character gate. A mismatch here means the
-    # program fails loudly instead of submitting a wrong entry.
-    with open("/output/entry.txt", "r", encoding="utf-8") as f:
-        written = f.read()
-    assert written == line, "entry.txt differs from the chosen line"
-    assert "\n" not in written, "entry must be a single line"
-    assert written.strip(), "entry must not be blank"
-    assert written == written.strip(), "entry must not start or end blank"
-    assert 1 <= len(written) <= MAX_CHARS, \
-        f"entry over gate: {len(written)} chars"
-    print(f"{line} ({len(written)} chars)")
+    pool, dropped = eligible(CANDIDATES)
+    for candidate in pool:
+        line = candidate[0]
+        assert "\n" not in line, "entry must be a single line"
+        assert 0 < len(line) <= MAX_LENGTH, "entry must be 1-280 chars"
+    for candidate in pool:
+        print("  %2d/10 %3d chars  %s" % (
+            score(candidate), len(candidate[0]),
+            candidate[0][:60] + "..."))
+    chosen = pick(pool)
+    line = chosen[0]
+    digest = hashlib.sha256(line.encode("utf-8")).hexdigest()
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+    with open(OUTPUT_PATH, "r", encoding="utf-8") as handle:
+        written = handle.read().rstrip("\n")
+    assert written == line, "self-check failed: file differs from pick"
+    assert hashlib.sha256(written.encode("utf-8")).hexdigest() == digest
+    print("candidates: %d kept, %d excluded" % (len(pool), dropped))
+    print("score: %d/10" % score(chosen))
+    print("length: %d chars" % len(line))
+    print("sha256: %s" % digest)
+    print(line)
 
 
 if __name__ == "__main__":

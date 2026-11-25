@@ -6,7 +6,7 @@
 
 One funny line, any subject — a concrete scene with an unexpected turn at the end. The program writes one line to `/output/entry.txt`:
 
-> I asked my AI assistant to remind me to water the plants; it filed a ticket, escalated it to my manager, and now HR wants to know why the fern is underperforming.
+> My fitness tracker congratulated me on 10,000 steps, then quietly reported me to my doctor for 'suspicious activity, possibly fleeing.'
 
 ## Run it
 
